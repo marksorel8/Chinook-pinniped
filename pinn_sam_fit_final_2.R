@@ -255,18 +255,6 @@ HMM_only<-fit_mod(data=out$data,params=out$parameters,fit_pop_Ast=0,fit_HMM=1,ma
  HMM_only$gr()
  assessFunc(HMM_only, out$dat,70,200,209)
  
- 
- 
- new_pin_dat_mod<-fit_mod(data=out$data,params=fixedParams(HMM_only,1:6),fit_pop_Ast=1,fit_HMM=0,map_pars=1:6,haz_map=NULL,surv_map=NULL,fit=FALSE)
- 
- 
- sim1<-new_pin_dat_mod$simulate()
- sim2<-sim1$sim
- hist(sim2)
-sim_surv<-data.frame(surv=as.numeric(sim2!=140),TT_bon=ifelse(as.numeric(sim2!=140),sim2-out$data$relDOY,NA))
-write.csv(sim_surv,file=here("data","sim_surv.csv"))
-
- 
 #---------------------------
 #draw parameter sets from a Multivariate normal for the HMM
 par_draws<-draw_params(HMM_only)
