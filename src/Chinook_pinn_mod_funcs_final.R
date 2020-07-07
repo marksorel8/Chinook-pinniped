@@ -4,15 +4,15 @@
 ####################################################
 
 
-dataProcess<-function(start_day=75,end_day=200,end_bon=210){ #function to read and process data, returns list of data for model, and a list of initial parameters for model, as well as data for plotting
+dataProcess<-function(start_day=75,end_day=200,end_bon=210,ad_mort=1,ad_mig=0){ #function to read and process data, returns list of data for model, and a list of initial parameters for model, as well as data for plotting
   
   library(here)
   
   #read data with Astoria tagging, survival, and Bonneville detection date data
-  dat<-read.csv(here("data","survDat_simulated.csv"))
+  dat<-read.csv(here("data","surv_dat_MS.csv"))
   
   #load Astoria sea lion count data
-  pinnDat<-read.csv(here("data","pinnCounts_simulated.csv"))
+  pinnDat<-read.csv(here("data","pinnCounts.csv"))
   
   #create a time series with NAs for days with no pinniped counts 
   ##create sequence of zeros
@@ -24,7 +24,6 @@ dataProcess<-function(start_day=75,end_day=200,end_bon=210){ #function to read a
   pinnTS2<-ts(pinnTS$count,start=c(2010,1),frequency=365)
   
   #plot(pinnTS2)
-  
   #fit a loess model to the pinniped counts to interpolate missing values.
   #This model could be integrated with the rest of the model I suppose 
   loessTest<-loess(log(pinnTS$count+1)~c(1:length(pinnTS$count)),span=.02)
@@ -65,8 +64,8 @@ dataProcess<-function(start_day=75,end_day=200,end_bon=210){ #function to read a
     vec<-integer(0)
     for ( i in 1:nrow(dat)){
       vec<-c(vec,mat[(dat[i,"date"]-start_day+1): 
-                       ifelse(is.na(dat$TT.Bon[i]),
-                              end_bon-start_day+1,(dat$TT.Bon[i]+dat[i,"date"]-start_day+1)),
+                       ifelse(is.na(dat$TT_MS[i]),
+                              end_bon-start_day+1,(dat$TT_MS[i]+dat[i,"date"]-start_day+1)),
                      dat[i,"year"]-2009])
     }
   #  hist(mat)
@@ -76,14 +75,14 @@ dataProcess<-function(start_day=75,end_day=200,end_bon=210){ #function to read a
   pinn_out<-list(log_pinn_Mat=log_pinn_Mat,log_bon_pinn_Mat=log_bon_pinn_Mat)
   
    #use function to scale (i.e. Z-score) (loess predicted) log pinniped count matrix
-  log_pinn_Mat <- scale_mat_func(log_pinn_Mat)
+  log_pinn_Mat_s <- scale_mat_func(log_pinn_Mat)
   
   #scale Bonneville pinniped counts  
-  log_bon_pinn_Mat<-scale_mat_func(log_bon_pinn_Mat)
+  log_bon_pinn_Mat_s<-scale_mat_func(log_bon_pinn_Mat)
 
   #averages of SCALED Astoria and Bonneville pinnnipeds
-  avePin<-scale_mat_func((exp(log_bon_pinn_Mat)+exp(log_pinn_Mat))/2)
-  log_ave_pin<-scale_mat_func((log_bon_pinn_Mat+log_pinn_Mat)/2)
+  avePin<-scale_mat_func((exp(log_bon_pinn_Mat)+exp(log_pinn_Mat)))#/2
+  log_ave_pin<-scale_mat_func(log((exp(log_bon_pinn_Mat)+exp(log_pinn_Mat))))#/2
   
   #load data on Bonneville detection dates for fish tagged as juveniles (datset #2)
   intFile2<-read.csv(here("data","intFile2.csv"))
@@ -113,11 +112,13 @@ dataProcess<-function(start_day=75,end_day=200,end_bon=210){ #function to read a
   #For fish that were never seen, I will give them a 
   #Bonneville Arrival day of the day after the last day of the study, 
   #as an indicator.
-  bon_Days_Unk_pops<-dat$date+dat$TT.Bon-start_day  #"date" is tag date and "TT.Bon" is travel time, so adding them is the Bonneville arrival date
-  bon_Days_Unk_pops[is.na(bon_Days_Unk_pops)]<-(end_bon-start_day+2) #indicator for fish never seen at Bonneville
+
+  bon_Days_Unk_pops<-dat$date+dat$TT_MS-start_day  #"date" is tag date and "TT.Bon" is travel time, so adding them is the Bonneville arrival date
+  bon_Days_Unk_pops[dat$surv_ms==0]<-(end_bon-start_day+2) #indicator for fish never seen again
+  bon_Days_Unk_pops[dat$surv_ms==1&is.na(dat$TT_MS)]<-(end_bon-start_day+3) # indicator for fish seen only ABOVE Bonneville Dam
   
   #For scaling: vector of all the departure days used in the HMM model (one for each day of each fish's capture history)
-  tagDayVec<-rep(dat$date,ifelse(is.na(dat$TT.Bon),(end_bon)-(dat$date)+1,dat$TT.Bon+1))
+  tagDayVec<-rep(dat$date,ifelse(is.na(dat$TT_MS),(end_bon)-(dat$date)+1,dat$TT_MS+1))
  # hist(tagDayVec)
   mean(tagDayVec)
   #*will use log-normalized version of tag day-of-year in model
@@ -129,7 +130,7 @@ dataProcess<-function(start_day=75,end_day=200,end_bon=210){ #function to read a
   ##The data files that I have are weird in that they load in as character data.I have to use sapply to convert them to numeric column by column, Which throws an error when there are any NA's but all the NA's are at the end of each year which I am not using so it is ok.
   
   #read in river temperature at Bonneville data and turn it into numeric column by column (annoying but necessary thing)
-  tempDat<-sapply(  read.csv(here("data","tempWarr.csv")),
+  tempDat<-sapply(read.csv(here("data","tempWarr.csv")),
                     function(x)as.numeric(as.character(x)))
   
   #trim to start at starting day of model (not important nwo that I am scaling covariates correctly but I'll leave it int here for now out of lazyness)
@@ -197,9 +198,8 @@ dataProcess<-function(start_day=75,end_day=200,end_bon=210){ #function to read a
              
              rel_Year=dat$year-2010,   # year index for each fish released. Subtracting 1 for TMB indexing (starts at 0)
              
-             pinCounts=cbind(log_ave_pin,rowMeans(log_ave_pin[,1:3]),rowMeans(log_ave_pin[,4:6])),   #matrix of average log sea lion counts, last two are average of 2010-2012 and 2013-2015
-
-             phi_x=array(tempDat_array,dim=c(dim(outflowDat),1)),# covariate values for survival 
+             pinCounts=cbind(log_pinn_Mat_s,rowMeans(log_pinn_Mat_s[,1:3]),rowMeans(log_pinn_Mat_s[,4:6])),   #matrix of average log sea lion counts, last two are average of 2010-2012 and 2013-2015
+                         phi_x=array(tempDat_array,dim=c(dim(outflowDat),1)),# covariate values for survival 
              
              dayCov=1,                 #is tag-day a covariate in travel time model? yes=1, no=0
              
@@ -221,23 +221,28 @@ dataProcess<-function(start_day=75,end_day=200,end_bon=210){ #function to read a
              bonDOY_known_pop=
                intFile3$detectionJulian-start_day,#observation dates of fish (of known population) pasing Bonneville Dam. Subtracting 1 for TMB indexing
              
-             pop=as.numeric(intFile3$Pop)-1, # index of population for each fish detected at Bonneville Dam, which are used to fit population-specific Astoria departure timing. Subtracting 1 for TMB indexing
+             pop=as.numeric(as.factor(intFile3$Pop))-1, # index of population for each fish detected at Bonneville Dam, which are used to fit population-specific Astoria departure timing. Subtracting 1 for TMB indexing
              
              bon_Years=intFile3$detectionYear-2009-1, #index of year for each fish detected at Bonneville Dam, which are used to fit population-specific Astoria departure timing. Subtracting 1 for TMB indexing
-             exp_rate=c(1,1)              # rate paramaters for exponential priors on standard deviations of normal penalized complexity priors on coefficients. First is for survial model and second is for travel time model. 
+             exp_rate=c(1,1),              # rate paramaters for exponential priors on standard deviations of normal penalized complexity priors on coefficients. First is for survial model and second is for travel time model. 
+             
+             ad_mort=ad_mort,
+             ad_mig=ad_mig,
+             ad_haz=0
   )
   
   
   #Make a list of starting values for parameters
   parameters<-list(log_sigma=runif(6,-1.5,0.5),         #penalized-complexity prior log-standard deviations
-                   logit_lambda=runif(1,-4,-3),  #Weibull logit-sclae
+                   log_lambda=runif(1,-4,-3),  #Weibull log-sclae
                    log_alpha=runif(1,1,2),          #Weibull log-shape
                    B=rnorm(3,c(1,-.5,1.3),.5),                  #coeffcients for transition (psi) Weibull
                    phi_intercept=rnorm(1,4.8,.5),             #intercept for logit-survival (phi) 
                    phi_betas=rnorm(3,c(-1.2,-.3,-.2),.2),          #coeficcients for logit-survival
                    A_mu=rnorm(length(unique(intFile3$Pop)),1.5,.5),       #population-specific log-mean Astoria departure days
                    A_sigma= rnorm(length(unique(intFile3$Pop)), 1.5,.5), #population-specific log-standard deviation Astoria departure days
-                   A_year_beta=rnorm(length(unique(intFile3$detectionYear))-1,0,.1))  # year effects      
+                   A_year_beta=rnorm(length(unique(intFile3$detectionYear))-1,0,.1),  # year effects
+                   B_year_beta=rnorm(length(unique(intFile3$detectionYear))-1,0,.1))
   
   
   return(list(parameters=parameters,data=data,dat=list(dat,intFile3),pinn=pinn_out))
@@ -251,101 +256,129 @@ dataProcess<-function(start_day=75,end_day=200,end_bon=210){ #function to read a
 ##        Function to plot fits to data                  
 ###########################################
 
-assessFunc<-function(mod, data,start_day,end_day,bon_end, plot_out=F ){
+assessFunc<-function(fit_out, data,start_day,end_day,bon_end, plot_out=F ,print_outs=TRUE,plot_surv=TRUE,plot_TT=TRUE,plot_pop_Ast=FALSE,cex){
+
+  test<-fit_out$mod$report()
   
   dat<-data[[1]]
   intFile3<-data[[2]]
-  test<-mod$report()
  
   
+  sds<-matrix(fit_out$mod_fit$SD$sd[names(fit_out$mod_fit$SD$value)=="all_zeros_prob_or"],ncol=8)
   
 ####### print likelihood components  
+  if(print_outs){
   print(test$l1) #survival and travel time
   print(test$l2)  #population-specific Bonneville detection
   print(test$l3)  # penalized complexity coefficients 
   print(test$l4)  # penalized complexity hyper prior on standard deviations
   print(test$Obj_fun) # total NLL
-
+  }
   ###################Survival by tag date   
   
-  
-  daily_Surv<-tapply(dat$surv, list(dat$date,dat$year,dat$clip), function(x)sum(x)/length(x))
-  daily_samp_size<-tapply(dat$surv, list(dat$date,dat$year,dat$clip), function(x)length(x))
+  if(plot_surv){
+  daily_Surv<-tapply(dat$surv_ms, list(dat$date,dat$year,dat$clip), function(x)sum(x)/length(x))
+  daily_samp_size<-tapply(dat$surv_ms, list(dat$date,dat$year,dat$clip), function(x)length(x))
   
   all_zeros_prob<-test$all_zeros_prob
   if(plot_out){
-    png("surv_plot.png",units="in",height=4,width=5,res=300)
+    png("surv_plot.png",units="in",height=3.75,width=6,res=300)
   }
-  par(cex=1.5,mfrow=c(2,3),mar=c(3,3,3,.5),oma=c(4,4,0,6))
+
+   par(mfrow=c(2,4),mar=rep(0,4),oma=c(7,10,2,10),cex=cex)
+  #par(cex=1.5,mfrow=c(2,3),mar=c(3,3,3,.5),oma=c(4,4,0,6))
   
-  for ( i in 1:ncol(daily_Surv)){
+  for ( i in c(1:3,7,4:6,8)){
     plot(1,1,type="n",ylim=c(0,1.1),xlim=c(start_day,end_day),
          xlab="",
          ylab="",
-         main = i+2009)
+         main = "",
+         yaxt="n",
+         xaxt="n")
+    if(i%in%c(4:6,8))axis(1,at=c(91,121,152,182),labels = c("1-Apr","","1-Jun",""),cex.axis=1.5,padj=0)
+    if(i%in%c(1,4)) axis(2,cex.axis=1.5)
+    if(i<7){
     points(as.numeric(row.names(daily_Surv)),
-           daily_Surv[,i,1],
+           1-daily_Surv[,i,1],
            cex=ceiling(daily_samp_size[,i,1]/10),
-           col=rgb(1,0,0,.5),pch=19)
+           col=rgb(0,0,.5,.5),pch=19)
     
     points(as.numeric(row.names(daily_Surv)),
-           daily_Surv[,i,2],
+           1-daily_Surv[,i,2],
            cex=ceiling(daily_samp_size[,i,2]/10),
-           col=rgb(0,1,0,.5),pch=19)
+           col=rgb(.5,0,0,.5),pch=19)   
+       
+    points(start_day:end_day, all_zeros_prob[[2]][,i],type="l",lwd=4,col=rgb(.5,0,0)) 
+    }else{
+   
+      mort_wild<-all_zeros_prob[[1]][,i]
+      mort_wild_sd<-sds[,i] 
+      polygon(c(start_day:end_day,rev(start_day:end_day)),c(mort_wild+1.96*mort_wild_sd,rev(mort_wild-1.96*mort_wild_sd)),border=FALSE,col=rgb(0,.0,.5,.5))
+    }
     
-    points(start_day:end_day,1- all_zeros_prob[[1]][,i],type="l",lwd=2,col="red" )  
-    points(start_day:end_day,1- all_zeros_prob[[2]][,i],type="l",lwd=2,col="green" ) 
+ points(start_day:end_day, all_zeros_prob[[1]][,i],type="l",lwd=4,col=rgb(0,0,.5) )  
+
+ lab<-ifelse(i<7,i+2009,ifelse(i==7,"2010-2012","2013-2015"))
+    text(x=(end_day-start_day)*1+start_day ,y=.95,labels = lab, pos=2,cex=1.5,font=2)
     
   }
-  points(rep(250,7),c(-.10,.1,.37,.67,1.1,1.53,1.96)/1.25,
-         pch=19,xpd=NA,col=c(rep(rgb(.1,.1,.1,.35),5),rgb(0,1,0,.5),rgb(1,0,0,.5)),
+  points(rep(250,7)-15,c(-.10,.1,.37,.67,1.1,1.53,1.96)/1,
+         pch=19,xpd=NA,col=c(rep(rgb(.1,.1,.1,.35),5),rgb(.5,0,0,.5),rgb(0,0,.5,.5)),
          cex=c(1:5,5,5))
   
-  text(rep(260,5),c(-.10,.1,.37,.67,1.1,1.53,1.96)/1.25,
-       c("1-10","11-20","21-30","31-40","41-50","Hatchery","Natural"),xpd=NA,pos=4)
-  mtext("Astoria-departure DOY",1,0,outer=T)
-  mtext("Survival",2,0,outer=T)
+  text(rep(260,5)-15,c(-.10,.1,.37,.67,1.1,1.53,1.96)/1,
+       c("1-10","11-20","21-30","31-40","41-50","Hatchery","Natural"),xpd=NA,pos=4,cex=1.5)
+  mtext("Astoria departure day of year",1,4,outer=T,cex=1.2)
+  mtext("Mortality",2,4,outer=T,cex=1.2)
   if(plot_out){
    dev.off()
   }
+  }
   ###################### Travel Time ################# 
-  
+
+  if(plot_TT){
   tt_calc_func<-function(){
        if(plot_out){
         png("TT_plot.png",units="in",height=4,width=5,res=300)
        }
-    par(cex=1.5,mfrow=c(2,3),mar=c(3,3,3,.5),oma=c(4,4,0,6))
+    par(cex=1.5,mfrow=c(2,3),mar=rep(0,4),oma=c(6,6,3,3))
     for (i in 1:6){
-      BA<-test$BcondA[[1]][[i]]
-      BA<-BA/ (1-matrix(test$all_zeros_prob[[2]][,i],nrow=end_day-start_day+1,ncol=bon_end-start_day+1,byrow = FALSE))
+      BA<-test$BcondA[[1]][[i]]/rowSums(test$BcondA[[1]][[i]])
       
       med<-apply(BA,1,function(x) which.min(abs(cumsum(x)-.5)))-(1:(end_day-start_day+1))
-      low<-apply(BA,1,function(x)which.min(abs(cumsum(x)-.95)))-(1:(end_day-start_day+1))
-      high<-apply(BA,1,function(x)which.min(abs(cumsum(x)-.05)))-(1:(end_day-start_day+1))
+      low<-apply(BA,1,function(x)which.min(abs(cumsum(x)-.975)))-(1:(end_day-start_day+1))
+      high<-apply(BA,1,function(x)which.min(abs(cumsum(x)-.025)))-(1:(end_day-start_day+1))
    
       
       plot(dat$date[dat$year==2009+i],
-           dat$TT.Bon[dat$year==2009+i],type="p",xlim=c(start_day,end_day),#range(dat$date),
-           ylim=c(0,max(dat$TT.Bon,na.rm = T)),main=2009+i,
-           xlab="",ylab="")
+           dat$TT_MS[dat$year==2009+i],type="n",xlim=c(start_day,end_day),#range(dat$date),
+           ylim=c(0,max(dat$TT_MS,na.rm = T)),main="",
+           xlab="",ylab="",pch=19,col=rgb(.3,.3,.3,.6),yaxt="n",xaxt="n")
+      if(i%in%c(1,4))(axis(2,at=seq(0,80,by=20)))
+      if(i%in%c(4:6))(axis(1,at=c(91,121,152,182),labels = c("1-Apr","","1-Jun","")))
       
-      points(start_day:(end_day),med,col="red",type="l",xpd=F)
-      points(start_day:(end_day),low,col="red",type="l",lty=2,xpd=F)
-      points(start_day:(end_day),high,col="red",type="l",lty=2,xpd=F)
+      text(x=((end_day-start_day)*0.5)+start_day+20,y=90,pos=1,labels =i+2009,font=2)
+     
+      polygon(c(start_day:(end_day),(end_day:start_day)),c(low,rev(high)),border=F,col=rgb(.5,0,0,.3))
+     points(dat$date[dat$year==2009+i],
+                 dat$TT_MS[dat$year==2009+i],type="p",pch=19,col=rgb(.3,.3,.3,.6))
+              
+              points(start_day:(end_day),med,col=rgb(.5,0,0),type="l",lwd=3)
+
     }
-    mtext("Travel Time",2,0,T,xpd=NA) 
-    mtext("Astoria departure day",1,-.10,T,xpd=NA)
+    mtext("Travel time",2,4,T,xpd=NA,cex=1.25) 
+    mtext("Astoria departure day of year",1,4,T,xpd=NA,cex=1.25)
   }
   
   tt_calc_func()
   if(plot_out){
     dev.off()
   }
-  
+  }
    ############ population -specific Bonneville Arrival ######
   ##### average across years
-  
-  if(mod$env$data$fit_pop_Ast==1){  
+
+  if(plot_pop_Ast){  
     bp<-test$BP
 
   
@@ -491,8 +524,16 @@ plot_pop_surv<-function(report=result2,start_day=out$data$start_day,end_day=200)
 #function that returns tables of covariate values and produces a plot of average (across years) population-specific Astoria departure timeing and the percent change in average population-specific survial between 2010-2012 and 2013-2015
 
 coef_plot<-function(report,
-                    start_day=70,surv_change,pop_order=c(18,5,10,NA,14,NA,8,11,2,15,6,NA,13,4,17,NA,1,9,NA,7,12,3,16),cols=c('#1b9e77','#d95f02','#7570b3','#e7298a','#66a61e','#e6ab02')){
+                    start_day=70,mort,pop_order=c(18,5,10,NA,14,NA,8,11,2,15,6,NA,13,4,17,NA,1,9,NA,7,12,3,16),cols=c('#1b9e77','#d95f02','#7570b3','#e7298a','#66a61e','#e6ab02'),plot_which=3,cex=1){
   
+  labs<-sub(" .*$", "", levels(out$dat[[2]]$Pop))
+  labs[c(3,4,15,16,17)]<-c("EF salmon","EFSF Salmon","Upper GR",  "Upper Salmon", "Upper SF Salmon" )
+  labs<-labs[pop_order]
+  #label MPG's
+  MPGs<-c("Upper Columbia","Lower Snake","Grande Ronde/\nImnaha","South Fork\nSalmon","Middle Fork\nSalmon","Upper Salmon")
+  
+  
+  y_loc<--(diff(c(0,which(is.na(pop_order)),(length(pop_order)+1)))/2)+c(which(is.na(pop_order)),(length(pop_order)+1))
   
   col_vec<-rep(cols,each=)
   
@@ -503,10 +544,14 @@ coef_plot<-function(report,
   
   A_yr<-report[names(report)=="A_year_beta"]
 
+  B_yr<-report[names(report)=="B_year_beta"]
+  
 
   #beta version
-  log_mean_Ast<-exp(A_mu+mean(c(A_yr,0)))
+  log_mean_Ast<-exp(A_mu)
   log_sd_Ast<-exp(A_sigma)
+
+  
   
   med<-(qbeta(.5,(log_mean_Ast),(log_sd_Ast)))*out$data$Na+start_day
   lower<-(qbeta(.025,(log_mean_Ast),(log_sd_Ast)))*out$data$Na+start_day
@@ -515,17 +560,25 @@ coef_plot<-function(report,
   upperQuant<-(qbeta(.75,(log_mean_Ast),(log_sd_Ast)))*out$data$Na+start_day
   
   
-  par(mfrow=c(1,2),mar=c(1,0,0,0),oma=c(4,5,1,5))
-  plot(x=0,y=0,type="n",xlim=range((c(lower,upper))),ylim=c(0,length(pop_order))+.5,yaxt="n",xaxt="n",xlab="",ylab="")
-  mtext("Astoria departure",1,2.36,cex=0.9, xpd=NA )
+  
+  
+  
+  num_plots<-ifelse(plot_which>2,2,1)
+  
+  par(mfrow=c(1,num_plots),mar=c(1,0,0,0),oma=c(2.8,5,1,5),cex=cex)
   
   polygon_func<-function(){
-  break_pts<-c(0,which(is.na(pop_order)),20)
-  for ( i in 1:3){
-    polygon(x=c(-1,365,365,-1),y=rep(break_pts[((i*2)-1):(i*2)],each=2),col="lightgrey",border=FALSE,xpd=FALSE)
-  box()
+    break_pts<-c(0,which(is.na(pop_order)),20)
+    for ( i in 1:3){
+      polygon(x=c(-1,365,365,-1),y=rep(break_pts[((i*2)-1):(i*2)],each=2),col="lightgrey",border=FALSE,xpd=FALSE)
+      box()
     }
   }
+  if(plot_which%in%c(1,3)){
+  plot(x=0,y=0,type="n",xlim=range((c(lower,upper))),ylim=c(0,length(pop_order))+.5,yaxt="n",xaxt="n",xlab="",ylab="")
+  mtext("Astoria departure",1,2,cex=1, xpd=NA )
+  
+
   polygon_func()
   
   points(med[pop_order],y=1:length(pop_order),pch=19)
@@ -541,52 +594,56 @@ coef_plot<-function(report,
   
   
   
-  labs<-sub(" .*$", "", levels(out$dat[[2]]$Pop))
-  labs[c(3,4,15,16,17)]<-c("EF salmon","EFSF Salmon","Upper GR",  "Upper Salmon", "Upper SF Salmon" )
-  labs<-labs[pop_order]
+
   
   
-  axis(1,at=c(91,151),labels=c("Apr","Jun"),cex.axis=.8,padj=-.5)
+  axis(1,at=c(91,151),labels=c("1-Apr","1-Jun"),cex.axis=.8,padj=-.5)
   axis(2,at=which(!is.na(pop_order)),labels=F)
-  text(x=65,y=1:length(pop_order)+.1,
+  text(x=67,y=1:length(pop_order)+.1,
        pos = 2,labels=labs,xpd=NA,srt=0,cex=.6) #121,,182"May","Jul"
   
-  
+  if(plot_which!=3){ 
+    text(x=max(upper)+1,y=y_loc,
+       pos = 4,labels=MPGs,xpd=NA,srt=0,cex=.6)
+    axis(4,at=which(is.na(pop_order)),labels=F)
+  }
+  }
   
   #bootstrap distribution
-  per_change<-matrix((surv_change[,7]),ncol=18,byrow = TRUE)
-  per_change_qant<-apply(per_change, 2, quantile,probs=c(.025,.25,.5,.75,.975))
+  if(plot_which%in%c(2,3)){
+  mort_qant<-apply(mort, 1, quantile,probs=c(.025,.25,.5,.75,.975))
   
-  lower<-per_change_qant[1,]
-  upper<-per_change_qant[5,]
-  lowerQuant<-per_change_qant[2,]
-  upperQuant<-per_change_qant[4,]
-  med_perc_change<-per_change_qant[3,]
+  lower<-mort_qant[1,]
+  upper<-mort_qant[5,]
+  lowerQuant<-mort_qant[2,]
+  upperQuant<-mort_qant[4,]
+  med_perc_change<-mort_qant[3,]
   
   
   
   #par(mfrow=c(1,1))
-  plot(x=0,y=0,type="n",xlim=range(c(lower,upper)-1),ylim=c(0,length(pop_order))+.5,yaxt="n",xaxt="n",xlab="",ylab="")
-  mtext("Proportional change\n in survival",1,3.2,cex=0.9, xpd=NA )
+  plot(x=0,y=0,type="n",xlim=c(0,max(upper)),ylim=c(0,length(pop_order))+.5,yaxt="n",xaxt="n",xlab="",ylab="")
+  mtext("Mortality",1,2.2,cex=1, xpd=NA )
   polygon_func()
-  points(med_perc_change[pop_order]-1,y=1:length(pop_order),pch=19)
-  segments((lower)[pop_order]-1,1:length(pop_order),(upper)[pop_order]-1,1:length(pop_order))
+  points(med_perc_change[pop_order],y=1:length(pop_order),pch=19)
+  segments((lower)[pop_order],1:length(pop_order),(upper)[pop_order],1:length(pop_order))
   
-  segments(lowerQuant[pop_order]-1,1:length(pop_order)+.2,lowerQuant[pop_order]-1,1:length(pop_order)-.2)
-  segments(upperQuant[pop_order]-1,1:length(pop_order)+.2,upperQuant[pop_order]-1,1:length(pop_order)-.2)
+  segments(lowerQuant[pop_order],1:length(pop_order)+.2,lowerQuant[pop_order],1:length(pop_order)-.2)
+  segments(upperQuant[pop_order],1:length(pop_order)+.2,upperQuant[pop_order],1:length(pop_order)-.2)
   
-  axis(1,at=seq(-.25,-.05,by=.1),cex.axis=.8,padj=-.5,labels=T)
-
-  
-  
-  #label MPG's
-  MPGs<-c("Upper Columbia","Lower Snake","Grande Ronde/\nImnaha","South Fork\nSalmon","Middle Fork\nSalmon","Upper Salmon")
-  
-  y_loc<--(diff(c(0,which(is.na(pop_order)),(length(pop_order)+1)))/2)+c(which(is.na(pop_order)),(length(pop_order)+1))
+  axis(1,at=seq(0,.3,by=.1),cex.axis=.8,padj=-.5,labels=T)
+abline(v=0,lty=2,lwd=1,xpd=T)
   
   axis(4,at=which(is.na(pop_order)),labels=F)
-  text(x=max(c(lower,upper)-1),y=y_loc,
+  text(x=max(c(lower,upper))+.02,y=y_loc,
        pos = 4,labels=MPGs,xpd=NA,srt=0,cex=.6)
+  
+  axis(2,at=which(!is.na(pop_order)),labels=F)
+  text(x=-.02,y=1:length(pop_order)+.1,
+       pos = 2,labels=labs,xpd=NA,srt=0,cex=.6) #121,,182"May","Jul"
+  
+}
+  
   }
 
 

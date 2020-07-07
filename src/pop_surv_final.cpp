@@ -26,10 +26,12 @@ Type objective_function<Type>::operator() ()
     DATA_IVECTOR(pop);                        //vector of populations of fish (tagged as juveniles) detected at Bonenville dam in Dataset #2
     DATA_IVECTOR(bon_Years);                  //vector of detection Years  at Bonneville dam of fish tagged as juveniles datset #2
     DATA_VECTOR(exp_rate);                    //rate paramater(s) for the exponential prior(s) on the standard deviations of the normal (penalized-complexity) priors (centered at zero) on coefficients. Can have seperate rate paramaters for survival and transition model covariates
-  
+    DATA_INTEGER(ad_mort);
+    DATA_INTEGER(ad_mig);
+    DATA_INTEGER(ad_haz);
   //paramaters
     PARAMETER_VECTOR(log_sigma);              //log-standard deviations of penalized-complexity priors on coefficients
-    PARAMETER(logit_lambda);                  //logit-scale paramater in Weibull baseline hazard model for transition probability
+    PARAMETER(log_lambda);                  //logit-scale paramater in Weibull baseline hazard model for transition probability
     PARAMETER(log_alpha);                     //log- shape parameter  in Weibull baseline hazard model for transition probability
     PARAMETER_VECTOR(B);                      //coefficients in hazard model of daily transition probability (of passing Bonneville dam)
     PARAMETER(phi_intercept);                 //intercept in logit-linear model of daily survival probability
@@ -37,13 +39,15 @@ Type objective_function<Type>::operator() ()
     PARAMETER_VECTOR(A_mu);                   //log-means of population-specific distributions of Astoria departure day
     PARAMETER_VECTOR(A_sigma);                //log_standard deviations for distribution of Astoria departure day
     PARAMETER_VECTOR(A_year_beta);            //years-effect (annual shifts) on log-means of Astoria departure day. Act on all populations the same in a given year.
+    PARAMETER_VECTOR(B_year_beta);            //years-effect (annual shifts) on log-means of Astoria departure day. Act on all populations the same in a given year.
+    
     //PARAMETER_VECTOR(A_hypers);              //years-effect (annual shifts) on log-means of Astoria departure day. Act on all populations the same in a given year.
     
 
   // Variable transofrmation
      
     //transform paramaters for hazard (travel-time) model.
-    Type lambda = invlogit( logit_lambda);     //scale parameter in hazard model
+    Type lambda = exp(log_lambda);     //scale parameter in hazard model
     Type alpha = exp(log_alpha);               //shape parameter in hazard model
    
     vector<Type> sigma = exp(log_sigma);       //transform the standard deviations of the normal (penalized-complexity) priors on the coefficients
@@ -95,7 +99,7 @@ Type objective_function<Type>::operator() ()
     P.setZero();
     P.diagonal()=obs.col(0);               //We will evaluate the foreward probability for all possible capture histories in our
                                            //data set, which we will need eventually for calculating derived survival estimates. 
-                                           //So, here I set the P matrix to be what it should be for a 0 (non-observation) in the capture history. 
+                                           //So, here I set diagonal of the P matrix to be what it should be for a 0 (non-observation) in the capture history. 
                                            //I will use this below in calculating the probability of being detected at Bonneville on each
                                            //day for fish departing Astoria on each day, and then at the end the probability of never being detected
                                            //will also be stored for fish departing on each day.
@@ -121,6 +125,7 @@ Type objective_function<Type>::operator() ()
     matrix<Type> A_dens(Na,Npops);             //declare 3matrix that will hold the probability of departing Astoria on each day for each population in each year
     
     Type A_year_effect=0;                  //initialize year-effect on Astoria departure time at 0 for the first (reference year).
+    Type B_year_effect=0;
     
     vector<matrix<Type> > BP(Nyears+2);      //begin declaration of 3-dimensional array (i.e. vector of 2-d matrices) that will hold the probability of detection at bonneville given that you are in a certain population and in a certain year [B|P,Y]
    
@@ -146,9 +151,12 @@ Type objective_function<Type>::operator() ()
      
      if (K>0 && K<Nyears && M==0) A_year_effect =     // if in "natural-origin" loop and after first (reference)year,
        A_year_beta(K-1);                  //update year-effect on Astoria departure time to parameter value. Year 1 is the reference year.
-  
+     if (K>0 && K<Nyears && M==0) B_year_effect =     // if in "natural-origin" loop and after first (reference)year,
+       B_year_beta(K-1);                  //update year-effect on Astoria departure time to parameter value. Year 1 is the reference year.
+     
   if ( K>=Nyears && M==0) A_year_effect = A_year_beta.sum()/6;   //average year 
-
+  if ( K>=Nyears && M==0) B_year_effect = B_year_beta.sum()/6;   //average year 
+  
    for (int I=0; I<Na; I++){              //loop through possible Astoria departure days
      
      l_t = delta;                         //start HMM multi-state likelihood vector at [1,0,0]
@@ -207,9 +215,9 @@ Type objective_function<Type>::operator() ()
        
        
        l_t *= transMat;                   // (matrix) multiply the probabilities that a fish was in each state the 
-                                          //previous day by the transition matrix (gamma in HMM notation)
+                                          //previous day by the transition matrix 
        
-       BcondA_Or_yr(I,I+J) = l_t(1)+1e-80;//store the likelihood that a fish arrived at Bonneville on a given day conditional on departing Astoria on a given day [B|A], adding a trivial amoun to prevent numerical issues when taking log(0)        
+       BcondA_Or_yr(I,I+J) = l_t(1)+1e-80;//store the likelihood that a fish arrived at Bonneville on a given day conditional on departing Astoria on a given day [B|A], adding a trivial amount to prevent numerical issues when taking log(0)        
        
        l_t *=  P;                         //multiply the vector of state probabilities by the P (observation) matrix for when a fish wasn't observed passing Bonneville. This way we move to the next day and estimate the probabilities that it survives and doesn't pass, passes, or dies the next day
 
@@ -221,8 +229,8 @@ Type objective_function<Type>::operator() ()
 
      //Loop through the populations and calculate and store the probability that a fish from a given population departed astoria in the current year
      for (int L =0; L<Npops; L++){
-         A_dens(I,L)=Type(pbeta(((Type(I)+Type(1.0))/Na),exp(A_mu(L)+A_year_effect),exp(A_sigma(L)))-
-           pbeta(((Type(I))/Na),exp(A_mu(L)+A_year_effect),exp(A_sigma(L))))
+         A_dens(I,L)=Type(pbeta(((Type(I)+Type(1.0))/Na),exp(A_mu(L)+A_year_effect),exp(A_sigma(L)+B_year_effect))-
+           pbeta(((Type(I))/Na),exp(A_mu(L)+A_year_effect),exp(A_sigma(L)+B_year_effect)))
                                   ;       //subtract the CDF of the lognorm Astoria-departure distribution through the start of the day
                                           //from the CDF through the end of the day to calculate and store the probability that a fish from a given population arrived on a given day in a given year  [A|P,Y]
 
@@ -264,14 +272,19 @@ Type objective_function<Type>::operator() ()
   vector<int> sim(relDOY.size());
     if(fit_HMM ==1){
    for( int I =0; I<relDOY.size() ; I++){ //loop through individual capture histories
-     if(bonDOY_unk_pop(I)==Nb)            //if the fish was never seen again after if was released
-       l1 -= log(all_zeros_prob(relOrigin(I)) //what was the log-probability of the all-zero capture history
-                   (relDOY(I),rel_Year(I)));//subtract from the negative log-likelihood the the probability f the all-zero capture history, ()the fish either died at some point during the study, or lived and never passed Bonneville) 
-     else                                 //otherwise
+     if(bonDOY_unk_pop(I)<Nb)            //if the fish was  seen again at Bonneville Dam
        l1 -= log(BcondA(relOrigin(I))
                    (rel_Year(I))(relDOY(I),bonDOY_unk_pop(I)))
                                         ; //subtract the log of the probability of the fish passing Bonneville on the day that it did
      
+        else 
+          if(bonDOY_unk_pop(I)==Nb)
+       l1 -= log(all_zeros_prob(relOrigin(I)) //what was the log-probability of the all-zero capture history
+                   (relDOY(I),rel_Year(I)));//subtract from the negative log-likelihood the the probability f the all-zero capture history, ()the fish either died at some point during the study, or lived and never passed Bonneville) 
+                                  //otherwise
+       else  l1 -= log(Type(1) -all_zeros_prob(relOrigin(I)) //what was the log-probability of the all-zero capture history
+                         (relDOY(I),rel_Year(I)));//subtract from the negative log-likelihood the the probability f the all-zero capture history, ()the fish either died at some point during the study, or lived and never passed Bonneville) 
+       //otherwise
 
      
    } //end of loop over fish in dataset #1
@@ -317,17 +330,32 @@ Type objective_function<Type>::operator() ()
   //REPORTS (These specify what variables are reported back to R)
   
    //ADREPORT means standard deviations are calculated when SDREPORT() is run
-    ADREPORT(log_sigma);              //log-standard deviations of penalized-complexity priors on coefficients
-    ADREPORT(logit_lambda);                  //logit-scale paramater in Weibull baseline hazard model for transition probability
-    ADREPORT(log_alpha);                     //log- shape parameter  in Weibull baseline hazard model for transition probability
-    ADREPORT(B);                      //coefficients in hazard model of daily transition probability (of passing Bonneville dam)
-    ADREPORT(phi_intercept);                 //intercept in logit-linear model of daily survival probability
-    ADREPORT(phi_betas);              //coefficients in logit-linear model of daily survival 
-    ADREPORT(A_mu);                   //log-means of population-specific distributions of Astoria departure day
-    ADREPORT(A_sigma);                //log_standard deviations for distribution of Astoria departure day
-    ADREPORT(A_year_beta);
+
+        
+    if(ad_mort){
+      ADREPORT(log_lambda);                  //logit-scale paramater in Weibull baseline hazard model for transition probability
+      ADREPORT(log_alpha);                     //log- shape parameter  in Weibull baseline hazard model for transition probability
+      ADREPORT(B);                      //coefficients in hazard model of daily transition probability (of passing Bonneville dam)
+      ADREPORT(phi_intercept);                 //intercept in logit-linear model of daily survival probability
+      ADREPORT(phi_betas);              //coefficients in logit-linear model of daily survival 
+      all_zeros_prob_or=all_zeros_prob(0);
+      ADREPORT(all_zeros_prob_or);
+    }
+    
+    if(ad_mig){
+      ADREPORT(A_mu);                   //log-means of population-specific distributions of Astoria departure day
+      ADREPORT(A_sigma);                //log_standard deviations for distribution of Astoria departure day
+      ADREPORT(A_year_beta);
+      ADREPORT(B_year_beta);
+    }
+    
+    if(ad_haz){
+      ADREPORT(lambda);
+      ADREPORT(alpha);
+    }
     
   //REPORT but dont necessariy calculate SDs when SDREPORT() is run
+    REPORT(log_sigma);              //log-standard deviations of penalized-complexity priors on coefficients
     REPORT(phi);
     REPORT(A_dens);
     REPORT(A_dens_array);
