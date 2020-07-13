@@ -1,3 +1,5 @@
+// Template Model Builder model of population- and year-specific survival of adults Chinook migrating from Astoria to Bonneville Dam
+// Mark Sorel 7-12-2020
 #include <TMB.hpp>
 
 template<class Type>
