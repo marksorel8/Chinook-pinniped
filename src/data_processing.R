@@ -36,7 +36,10 @@ dataProcess<-function(start_day=75,end_day=200,end_bon=210){ #function to read a
   #-----------------------------------------------------------------------------------------------  
   
   #load data on Bonneville detection dates for fish tagged as juveniles (datset #2)
-  intFile2<-read.csv(here("data","intFile2.csv"))
+  
+  if(file.exists(here("data","intFile2.csv"))) intFile2<-read.csv(here("data","intFile2.csv")) else
+    intFile2<-process_PTAGIS_function()
+ 
   #trim to years of Astoria mark-recapture study
   intFile3<-subset(intFile2,detectionYear>=2010 & 
                      detectionYear<=2015)
@@ -228,3 +231,233 @@ dataProcess<-function(start_day=75,end_day=200,end_bon=210){ #function to read a
 
 
 
+#### Function to process PTAGIS download of Bonneville detection date of fish tagged as juveniles in natal stream
+
+#____________________________________________________________________________
+#          Read and process detections data at Bonneville from PTAGIS
+#____________________________________________________________________________
+
+process_PTAGIS_function<-function(){
+#read in an "interrogation file" of detections of adults at Bonneville Dam
+
+intFile<-read.csv(here("data","Interrogation Summary 1.0.csv"))
+
+
+intFile$Mark.Date.MMDDYYYY<-as.Date(intFile$Mark.Date.MMDDYYYY,format="%m/%d/%Y")
+intFile$Last.Time.Value<-as.Date(intFile$Last.Time.Value,format="%m/%d/%Y")
+intFile$First.Time.Value<-as.Date(intFile$First.Time.Value,format="%m/%d/%Y")
+intFile$Tag.Code<-as.character(intFile$Tag.Code)
+
+#Get rid of duplicate detections (i.e. detected at multiple fish ladders)
+
+#Order by detection time at Boneville, going from earliest to latest
+intFile<-intFile[order(intFile$First.Time.Value,decreasing = F),]
+
+#Keep data row for first detection at Boneville for each fish and get rid of the rest. 
+uni<-unique(intFile[,1])
+intFile<-intFile[match(uni,intFile[,1]),]
+
+
+#Assign populations based on mark sites.
+intFile<-data.frame(Pop="Unk", intFile )
+intFile$Pop<-as.character(intFile$Pop)
+
+intFile[intFile$Mark.Site.Name=="CATHEC - Catherine Creek" ,1]<-
+  "Catherine Creek"
+
+intFile[intFile$Mark.Site.Code.Value=="GRAND2" ,1]<-
+  "Upper Grande Ronde"
+
+intFile[intFile$Mark.Site.Code.Value=="LOSTIR" ,1]<-
+  "Lostine River"
+
+intFile[intFile$Mark.Site.Code.Value=="MINAMR" ,1]<-
+  "Minam River"
+
+intFile[intFile$Mark.Site.Code.Value=="IMNAHR"|
+          intFile$Mark.Site.Code.Value=="IMNAHW"|
+          intFile$Mark.Site.Code.Value=="IMNTRP",1]<-
+  "Imnaha River"
+
+intFile[intFile$Mark.Site.Code.Value=="TUCR" ,1]<-
+  "Tucannon River"
+
+intFile[intFile$Mark.Site.Code.Value=="BIG2C" ,1]<-
+  "Big Creek"
+
+intFile[intFile$Mark.Site.Code.Value=="CAPEHC"|
+          intFile$Mark.Site.Code.Value=="MARSHC"|
+          intFile$Mark.Site.Code.Value=="MARTR2"|
+          intFile$Mark.Site.Code.Value=="MARTRP",1]<-
+  "Marsh Creek"
+
+intFile[intFile$Mark.Site.Code.Value=="JOHNSC" |
+          intFile$Mark.Site.Code.Value=="JOHTRP" ,1]<-
+  "East Fork South Fork Salmon"
+
+intFile[intFile$Mark.Site.Code.Value=="LAKEC" |
+          intFile$Mark.Site.Code.Value=="SECESR" |
+          intFile$Mark.Site.Code.Value=="SECTRP"|
+          intFile$Mark.Site.Code.Value=="SECESR",1]<-
+  "Secesh River"
+
+intFile[intFile$Mark.Site.Code.Value=="KNOXB" |
+          intFile$Mark.Site.Code.Value=="LSFTRP" |
+          intFile$Mark.Site.Code.Value=="SFSTRP",1]<-
+  "Upper South Fork Salmon"
+
+intFile[intFile$Mark.Site.Code.Value=="BIGSPC" |
+          intFile$Mark.Site.Code.Value=="HAYDNC" |
+          intFile$Mark.Site.Code.Value=="LEMHIR"|
+          intFile$Mark.Site.Code.Value=="LEMHIW",1]<-
+  "Lemhi River"
+
+intFile[intFile$Mark.Site.Code.Value=="SAWTRP",1]<-
+  "Upper Salmon River"
+
+intFile[intFile$Mark.Site.Code.Value=="PAHTRP",1]<-
+  "Pahsimeroi River"
+
+intFile[intFile$Mark.Site.Code.Value=="ENTIAR" |
+          intFile$Mark.Site.Code.Value=="MADRVR" ,1]<-
+  "Entiat River"
+
+intFile[intFile$Mark.Site.Code.Value=="CHEWUR" |
+          intFile$Mark.Site.Code.Value=="METHR" |
+          intFile$Mark.Site.Code.Value=="METTRP"|
+          intFile$Mark.Site.Code.Value=="TWISPR",1]<-
+  "Methow River"
+
+intFile[intFile$Mark.Site.Code.Value=="CHIWAR" |
+          intFile$Mark.Site.Code.Value=="CHIWAT" |
+          intFile$Mark.Site.Code.Value=="WENA4T"|
+          intFile$Mark.Site.Code.Value=="NASONC"|
+          intFile$Mark.Site.Code.Value=="PESHAR"|
+          intFile$Mark.Site.Code.Value=="WENA2T"|
+          intFile$Mark.Site.Code.Value=="WENA3T"|
+          intFile$Mark.Site.Code.Value=="WENATR"|
+          intFile$Mark.Site.Code.Value=="WENATT"|
+          intFile$Mark.Site.Code.Value=="WHITER",1]<-
+  "Wenatchee River"
+
+#Get Rid of fish not assigned to a population
+intFile<-intFile[intFile$Pop!="Unk",]
+
+#Designate MPG
+intFile<-data.frame(intFile,MPG="Unk")
+intFile$MPG<-as.character(intFile$MPG)
+
+
+intFile[intFile$Pop=="Catherine Creek"|
+          intFile$Pop=="Upper Grande Ronde"|
+          intFile$Pop=="Lostine River"|
+          intFile$Pop=="Minam River"|
+          intFile$Pop=="Imnaha River","MPG"]<-
+  "Grande Ronde/Imnaha"
+
+intFile[intFile$Pop=="Tucannon River","MPG"]<-
+  "Lower Snake"
+
+intFile[intFile$Pop=="Big Creek"|
+          intFile$Pop=="Marsh Creek","MPG"]<-
+  "Middle Fork Salmon"
+
+intFile[intFile$Pop=="East Fork South Fork Salmon"|
+          intFile$Pop=="Secesh River"|
+          intFile$Pop=="Upper South Fork Salmon","MPG"]<-
+  "South Fork Salmon"
+
+intFile[intFile$Pop=="Lemhi River"|
+          intFile$Pop=="Upper Salmon River"|
+          intFile$Pop=="Pahsimeroi River","MPG"]<-
+  "Upper Salmon"
+
+intFile[intFile$Pop=="Entiat River","MPG"]<-
+  "Entiat River"
+
+intFile[intFile$Pop=="Methow River","MPG"]<-
+  "Methow River"
+
+intFile[intFile$Pop=="Wenatchee River","MPG"]<-
+  "Wenatchee River"
+
+unique(intFile$MPG)
+
+
+#Designate ESU
+intFile<-data.frame(intFile,ESU="Unk")
+intFile$ESU<-as.character(intFile$ESU)
+
+intFile[intFile$MPG=="Grande Ronde/Imnaha"|
+          intFile$MPG=="Lower Snake"| 
+          intFile$MPG=="Middle Fork Salmon"|
+          intFile$MPG=="South Fork Salmon"|
+          intFile$MPG=="Upper Salmon","ESU"]<-
+  "Snake"
+
+intFile[intFile$MPG=="Entiat River"|
+          intFile$MPG=="Methow River"| 
+          intFile$MPG=="Wenatchee River","ESU"]<-
+  "Upper Columbia"
+
+
+#Add Run
+intFile$runType<-"spring"
+
+intFile[intFile$Pop=="Pahsimeroi River"|
+          intFile$Pop=="Upper South Fork Salmon"|
+          intFile$Pop=="Secesh River"  |
+          intFile$Pop=="East Fork South Fork Salmon" |
+          intFile$Pop=="Imnaha River" ,"runType"]<-"summer"
+
+
+#Add Year of detection at Bonneville
+intFile<-data.frame(intFile,detectionYear="Unk")
+
+intFile$detectionYear<-format(intFile$First.Time.Value, format="%Y")
+
+intFile$detectionYear<-as.numeric(intFile$detectionYear)
+
+#Add Julian date of detection at boneville 
+intFile<-data.frame(intFile,detectionJulian="Unk")
+
+intFile$detectionJulian<-format(intFile$First.Time.Value, format="%j")
+
+intFile$detectionJulian=as.numeric(intFile$detectionJulian)
+
+#add year tagged
+intFile<-data.frame(intFile,markYear="Unk")
+
+intFile$markYear<-format(intFile$Mark.Date.MMDDYYYY, format="%Y")
+
+intFile$markYear<-as.numeric(intFile$markYear)
+
+#add julian date tagged
+intFile<-data.frame(intFile,markJulian="Unk")
+
+intFile$markJulian<-format(intFile$Mark.Date.MMDDYYYY, format="%j")
+
+intFile$markJulian=as.numeric(intFile$markJulian)
+
+
+#add column of freshwater emigration year
+hist(intFile$markJulian)
+
+hist(intFile[intFile$markJulian>120&intFile$markJulian<200,"markJulian"])
+
+hist(intFile[intFile$markJulian<180&intFile$markJulian>160,"Mark.Length.mm"])
+
+intFile<-data.frame(intFile,freshwaterEmigrationYear=intFile$markYear)
+
+intFile[intFile$markJulian>160,"freshwaterEmigrationYear"]<-intFile[intFile$markJulian>160,"freshwaterEmigrationYear"]+1 
+
+#Trim off early years with very little data
+table(intFile$detectionYear)
+
+intFile<-intFile[intFile$detectionYear>2000,]
+
+#Get rid of fish which spent less than 2 years in saltwater. 
+intFile<-intFile[(intFile$detectionYear -intFile$freshwaterEmigrationYear)>1&(intFile$detectionYear -intFile$freshwaterEmigrationYear)<=4,]
+
+return(intFile)
+}
