@@ -48,7 +48,7 @@ par_draws<- mvtnorm::rmvnorm(1000,HMM_only$mod_fit$SD$value[1:9],HMM_only$mod_fi
 colnames(par_draws)<-names(HMM_only$mod_fit$SD$value[1:9])
   
 
-#fit the population-specific timing model for each HMM parameter draw
+#fit the population-specific timing model for each HMM parameter draw (this takes hours to run. With 50 cores it only took 45 mintues however. The Rdata file is saved in the GitHub repository however.)
 if(file.exists(here("results","AstPin_3par2_05242000.RData"))){load(here("results","AstPin_3par2_05242000.RData"))}else{
 
 out$data$ad_mort<-0 #don't incldue mortality and travel time parameters in adreport
@@ -61,7 +61,7 @@ Sys.time()-start_time
 }
 
  #---------------------------
-#loop through the full paramater sets and calculate population specific survival and the mortality attributable to increased pinniped abundance.
+#loop through the full paramater sets and calculate population specific survival and the mortality attributable to increased pinniped abundance. (This takes about an hours to run)
  start2<-Sys.time()
 if(file.exists(here("results","boot_pop_surv_05242000.Rdata"))){load(here("results","boot_pop_surv_05242000.Rdata"))}else{
 pop_surv_out<-pop_surv(par_draws=par_draws ,pop_time_boot=pop_time_boot2,Niter = 1000)
