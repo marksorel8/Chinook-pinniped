@@ -4,7 +4,7 @@ This repository contains code and data used in an analysis of population-specifi
 
 The main script for the analysis is "Chinook_sea_lion_mortality_analysis.R". This script conducts the ananlysis but sources several other scripts contained within the "src" folder. Several packages are required to run this script, including "TMB" or "Template Model builder", which also requires RTools. [Instruction here](https://github.com/kaskr/adcomp/wiki/Download). 
 
-The Template MOdel Builder code is contained within "pop_surv_final.cpp".
+"pop_surv_final.cpp" contains the Template Model Builder code for the HMM and the population-specfic migration timing. .
 
 "data_processing.R" contains functions to process data for the analysis.
 
