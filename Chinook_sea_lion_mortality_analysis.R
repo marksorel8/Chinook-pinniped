@@ -81,7 +81,6 @@ mort_pop_mat<-summarize_change_func(pop_surv_out)
 #Fit population timing model with the paramaters in the HMM set at the MLE
 pop_time_fit<-fit_mod(data=out$data,params=fixedParams(HMM_only$mod,1:6),fit_pop_Ast=1,fit_HMM=0,map_pars=1:6,haz_map=NULL,surv_map=NULL,fit=TRUE)
 
-pop_time_rep<-pop_time_fit$mod$report()
 
 dev.new()
 assessFunc(pop_time_fit, out$dat,70,200,209,plot_pop_Ast = T, plot_TT = F,plot_surv = F,print_outs = FALSE,cex=.5,plot_out = F)

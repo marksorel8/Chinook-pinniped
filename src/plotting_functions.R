@@ -144,7 +144,7 @@ assessFunc<-function(fit_out, data,start_day,end_day,bon_end, plot_out=F ,print_
     labs[c(3,4,15,16,17)]<-c("EF salmon","EFSF Salmon","Upper GR",  "Upper Salmon", "Upper SF Salmon" )
     
     for ( i in 1:18){
-      popSub<-intFile3$detectionJulian[as.numeric(intFile3$Pop)==i]
+      popSub<-intFile3$First.Day.Num[as.numeric(as.factor(intFile3$Pop))==i]
       histPop<-(hist(popSub,plot=FALSE))
       max(histPop$density)
       hist(popSub,freq=FALSE,xlim=range(out$data$bonDOY_known_pop+out$data$start_day),
