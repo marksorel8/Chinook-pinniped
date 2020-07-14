@@ -36,12 +36,22 @@ dataProcess<-function(start_day=75,end_day=200,end_bon=210){ #function to read a
   #-----------------------------------------------------------------------------------------------  
   
   #load data on Bonneville detection dates for fish tagged as juveniles (datset #2)
-    intFile3<-process_PTAGIS_function()
+  
+  if(file.exists(here("data","intFile2.csv"))){
+    intFile2<-read.csv(here("data","intFile2.csv")) 
+
+  #trim to years of Astoria mark-recapture study
+  intFile3<-subset(intFile2,detectionYear>=2010 & 
+                     detectionYear<=2015)
+  rm(intFile2) #delete (for memory conservation)
+  }
+  else intFile3<-process_PTAGIS_function()
   
   #drop a few populations that have very few detections
   intFile3<-droplevels(intFile3[!is.na(match(intFile3$Pop,
                                              names(sort(table((intFile3$Pop)))
                                                    [-1:-7]))),])
+  
   
   
   #-----------------------------------------------------------------------------------------------  
