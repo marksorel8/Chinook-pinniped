@@ -116,7 +116,7 @@ assessFunc<-function(fit_out, data,start_day,end_day,bon_end, plot_out=F ,print_
         points(start_day:(end_day),med,col=rgb(.5,0,0),type="l",lwd=3)
         
       }
-      mtext("Travel time",2,4,T,xpd=NA,cex=1.25) 
+      mtext("Travel time (days)",2,4,T,xpd=NA,cex=1.25) 
       mtext("Astoria departure day of year",1,4,T,xpd=NA,cex=1.25)
     }
     
