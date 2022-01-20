@@ -1,6 +1,9 @@
 # Chinook-pinniped
 
-This repository contains code and data used in the manuscript *Estimating population-specific predation effects on Chinook salmon via data integration* by Mark H. Sorel, Richard W. Zabel, Devin S. Johnson, A. Michelle Wargo Rub, and Sarah J. Converse, which has been provisionally accepted for publication in the Journal of Applied Ecology. 
+This repository contains code and data used in the manuscript:
+
+[Sorel, Mark H., Richard W. Zabel, Devin S. Johnson, A. Michelle Wargo Rub, and Sarah J. Converse. "Estimating population‐specific predation effects on Chinook salmon via data integration." Journal of Applied Ecology 58, no. 2 (2021): 372-381.](https://besjournals.onlinelibrary.wiley.com/doi/abs/10.1111/1365-2664.13772)
+
 
 The main script for the analysis is `Chinook_sea_lion_mortality_analysis.R`. This script conducts the ananlysis but sources several other scripts contained within the `src` folder. Several packages are required to run this script, including "TMB" (Template Model builder), which  requires RTools. [Download instruction here](https://github.com/kaskr/adcomp/wiki/Download). 
 
